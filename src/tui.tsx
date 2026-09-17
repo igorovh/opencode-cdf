@@ -2,9 +2,8 @@
 
 import path from "node:path"
 import { Plugin } from "@opencode-ai/plugin/tui"
-import type { SelectOption } from "@opentui/core"
 import { useKeyboard } from "@opentui/solid"
-import { Show, createMemo, createSignal } from "solid-js"
+import { For, Show, createMemo, createSignal } from "solid-js"
 import {
   INITIAL_STATE,
   findConflict,
@@ -27,6 +26,22 @@ type MenuChoice =
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+const ACTIVE_COLOR = "#ADD8E6"
+const NAME_COLOR = "#FFFFFF"
+const MAX_NAME_WIDTH = 28
+const MAX_PATH_WIDTH = 60
+const VISIBLE_ROWS = 12
+
+function truncateHead(text: string, max: number): string {
+  const chars = Array.from(text)
+  return chars.length <= max ? text : `${chars.slice(0, max - 1).join("")}…`
+}
+
+function truncateTail(text: string, max: number): string {
+  const chars = Array.from(text)
+  return chars.length <= max ? text : `…${chars.slice(-(max - 1)).join("")}`
 }
 
 function activeDirectory(context: TuiContext): string {
@@ -64,6 +79,8 @@ function CdfDialog(props: {
 }) {
   const [query, setQuery] = createSignal("")
   const [selectedIndex, setSelectedIndex] = createSignal(0)
+  const [hoverIndex, setHoverIndex] = createSignal<number>()
+  const [scrollOffset, setScrollOffset] = createSignal(0)
 
   const filtered = createMemo(() => {
     const needle = query().trim().toLocaleLowerCase("en-US")
@@ -73,15 +90,31 @@ function CdfDialog(props: {
     )
   })
 
-  const options = createMemo<SelectOption[]>(() =>
-    filtered().map((project) => ({
-      name: `${project.favorite ? "★ " : ""}${project.name}`,
-      description: props.context.ui.format.path(project.path),
-      value: project,
-    })),
-  )
+  const resetNavigation = () => {
+    setSelectedIndex(0)
+    setScrollOffset(0)
+    setHoverIndex(undefined)
+  }
 
   const selectedProject = (): ProjectEntry | undefined => filtered()[selectedIndex()]
+
+  const moveSelection = (delta: number) => {
+    const count = filtered().length
+    if (count === 0) return
+    const next = (((selectedIndex() + delta) % count) + count) % count
+    setSelectedIndex(next)
+    setScrollOffset((offset) => {
+      let nextOffset = offset
+      if (next < nextOffset) nextOffset = next
+      if (next >= nextOffset + VISIBLE_ROWS) nextOffset = next - VISIBLE_ROWS + 1
+      return Math.min(Math.max(nextOffset, 0), Math.max(0, count - VISIBLE_ROWS))
+    })
+  }
+
+  const scrollRows = (delta: number) => {
+    const count = filtered().length
+    setScrollOffset((offset) => Math.min(Math.max(offset + delta, 0), Math.max(0, count - VISIBLE_ROWS)))
+  }
 
   const runForSelection = (kind: "project" | "toggle" | "remove") => {
     const project = selectedProject()
@@ -118,20 +151,58 @@ function CdfDialog(props: {
       props.finish({ kind: "cancel" })
       return
     }
+    if (key.name === "up") {
+      consume()
+      moveSelection(-1)
+      return
+    }
+    if (key.name === "down") {
+      consume()
+      moveSelection(1)
+      return
+    }
+    if (key.name === "return" || key.name === "enter") {
+      consume()
+      runForSelection("project")
+      return
+    }
     if (key.name === "backspace") {
       consume()
       setQuery((value) => Array.from(value).slice(0, -1).join(""))
-      setSelectedIndex(0)
+      resetNavigation()
       return
     }
     if (!key.ctrl && !key.meta && !key.option && /^[^\x00-\x1F\x7F]+$/u.test(key.sequence)) {
       consume()
       setQuery((value) => value + key.sequence)
-      setSelectedIndex(0)
+      resetNavigation()
     }
   })
 
   const theme = props.context.theme.contextual.overlay
+
+  const nameColumnWidth = createMemo(() => {
+    let max = 0
+    for (const project of filtered()) {
+      max = Math.max(max, (project.favorite ? `★ ${project.name}` : `  ${project.name}`).length)
+    }
+    return Math.min(MAX_NAME_WIDTH, max)
+  })
+
+  const visibleRows = createMemo(() => {
+    const offset = scrollOffset()
+    return filtered()
+      .slice(offset, offset + VISIBLE_ROWS)
+      .map((project, position) => ({ project, index: offset + position }))
+  })
+
+  const isActive = (index: number): boolean => index === selectedIndex() || index === hoverIndex()
+
+  const rowLabel = (project: ProjectEntry): string =>
+    truncateHead(project.favorite ? `★ ${project.name}` : `  ${project.name}`, MAX_NAME_WIDTH).padEnd(
+      nameColumnWidth(),
+      " ",
+    )
 
   return (
     <box flexDirection="column" gap={1} padding={1}>
@@ -153,30 +224,37 @@ function CdfDialog(props: {
         when={filtered().length > 0}
         fallback={<text fg={theme.text.subdued}>No matching projects. Press Ctrl+A to add one.</text>}
       >
-        <select
-          height={Math.min(24, Math.max(5, filtered().length * 2))}
-          focused
-          options={options()}
-          selectedIndex={selectedIndex()}
-          onChange={(index) => setSelectedIndex(index)}
-          onSelect={(index) => {
-            setSelectedIndex(index)
-            runForSelection("project")
+        <box
+          flexDirection="column"
+          paddingLeft={2}
+          height={Math.min(VISIBLE_ROWS, filtered().length)}
+          onMouseScroll={(event) => {
+            if (event.scroll?.direction === "up") scrollRows(-1)
+            if (event.scroll?.direction === "down") scrollRows(1)
           }}
-          wrapSelection
-          showDescription
-          showScrollIndicator
-          backgroundColor={theme.background.surface.overlay}
-          textColor={theme.text.default}
-          focusedBackgroundColor={theme.background.surface.overlay}
-          focusedTextColor={theme.text.default}
-          selectedBackgroundColor={theme.background.formfield.selected}
-          selectedTextColor={theme.text.formfield.selected}
-          descriptionColor={theme.text.subdued}
-          selectedDescriptionColor={theme.text.formfield.selected}
-        />
+        >
+          <For each={visibleRows()}>
+            {(item) => (
+              <box
+                flexDirection="row"
+                gap={2}
+                onMouseOver={() => setHoverIndex(item.index)}
+                onMouseOut={() => setHoverIndex((current) => (current === item.index ? undefined : current))}
+                onMouseDown={(event) => {
+                  event.preventDefault()
+                  props.finish({ kind: "project", project: item.project })
+                }}
+              >
+                <text fg={isActive(item.index) ? ACTIVE_COLOR : NAME_COLOR}>{rowLabel(item.project)}</text>
+                <text fg={theme.text.subdued}>
+                  {truncateTail(props.context.ui.format.path(item.project.path), MAX_PATH_WIDTH)}
+                </text>
+              </box>
+            )}
+          </For>
+        </box>
       </Show>
-      <box flexDirection="row" gap={2}>
+      <box flexDirection="row" gap={2} paddingLeft={2}>
         <box flexDirection="row" gap={1}>
           <text fg={theme.text.default}>add</text>
           <text fg={theme.text.subdued}>ctrl+a</text>
@@ -190,7 +268,7 @@ function CdfDialog(props: {
           <text fg={theme.text.subdued}>ctrl+d</text>
         </box>
       </box>
-      <box flexDirection="row" gap={2}>
+      <box flexDirection="row" gap={2} paddingLeft={2}>
         <box flexDirection="row" gap={1}>
           <text fg={theme.text.default}>open</text>
           <text fg={theme.text.subdued}>enter</text>
