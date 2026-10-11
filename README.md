@@ -21,29 +21,38 @@ An OpenCode TUI plugin for saving project directories and switching between them
 ## Requirements
 
 - OpenCode V2 (`opencode2`) 2.0.26 or newer.
-- Bun for local development and tests.
 
-## Install locally
+## Install
 
-Install dependencies:
+Install the plugin from GitHub with the OpenCode CLI:
 
 ```sh
-bun install
+opencode2 plugin add github:igorovh/opencode-cdf
 ```
 
-Add the project directory to the global `plugins` array in `~/.config/opencode/opencode.jsonc`:
+To pin a release, add its tag:
+
+```sh
+opencode2 plugin add github:igorovh/opencode-cdf#v0.1.0
+```
+
+This adds the plugin to the global `plugins` array in `~/.config/opencode/opencode.jsonc`. Restart the TUI, then run
+`/cdf`.
+
+You can also add the entry to the config yourself:
 
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["/path/to/opencode-cdf"]
+  "plugins": ["github:igorovh/opencode-cdf"]
 }
 ```
 
-Restart the TUI and verify that the plugin is active:
+Update or remove it later:
 
 ```sh
-opencode2 api plugin.list
+opencode2 plugin update github:igorovh/opencode-cdf
+opencode2 plugin remove github:igorovh/opencode-cdf
 ```
 
 ## Usage
@@ -72,7 +81,24 @@ current user's home directory. A path must exist and must be a directory before 
 
 ## Development
 
+Requires [Bun](https://bun.sh).
+
 ```sh
+git clone https://github.com/igorovh/opencode-cdf.git
+cd opencode-cdf
+bun install
 bun test
 bun run typecheck
 ```
+
+To run your checkout instead of the published plugin, put its path in `plugins` and restart the TUI:
+
+```jsonc
+{
+  "plugins": ["/path/to/opencode-cdf"]
+}
+```
+
+## License
+
+[MIT](LICENSE)

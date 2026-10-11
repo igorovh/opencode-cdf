@@ -2,8 +2,33 @@
   "name": "opencode-cdf",
   "version": "0.1.0",
   "description": "OpenCode V2 TUI plugin for saving and switching between project directories",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "opencode-v2",
+    "tui",
+    "projects",
+    "favorites"
+  ],
+  "license": "MIT",
+  "author": "igorovh",
+  "homepage": "https://github.com/igorovh/opencode-cdf#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/igorovh/opencode-cdf.git"
+  },
+  "bugs": {
+    "url": "https://github.com/igorovh/opencode-cdf/issues"
+  },
   "type": "module",
   "private": true,
+  "files": [
+    "index.ts",
+    "tui.ts",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "exports": {
     ".": "./src/index.ts",
     "./tui": "./src/tui.tsx"
@@ -13,7 +38,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@opencode/client": "2.0.26",
     "@opencode/plugin": "2.0.26"
   },
   "peerDependencies": {
