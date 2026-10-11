@@ -1,4 +1,4 @@
-# opencode2-cdf
+# opencode-cdf
 
 An OpenCode TUI plugin for saving project directories and switching between them with `/cdf`.
 
@@ -36,7 +36,7 @@ Add the project directory to the global `plugins` array in `~/.config/opencode/o
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["E:/Projekty/WebstormProjects/opencode2-cdf"]
+  "plugins": ["/path/to/opencode-cdf"]
 }
 ```
 

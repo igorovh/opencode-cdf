@@ -1,5 +1,5 @@
 {
-  "name": "opencode2-cdf",
+  "name": "opencode-cdf",
   "version": "0.1.0",
   "description": "OpenCode V2 TUI plugin for saving and switching between project directories",
   "type": "module",
