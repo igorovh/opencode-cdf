@@ -1,12 +1,15 @@
 /** @jsxImportSource @opentui/solid */
 
 import path from "node:path"
-import { Plugin } from "@opencode-ai/plugin/tui"
-import { useKeyboard } from "@opentui/solid"
+import { Plugin } from "@opencode/plugin/tui"
+import type { RGBA } from "@opentui/core"
+import { useKeyboard, usePaste } from "@opentui/solid"
 import { For, Show, createMemo, createSignal } from "solid-js"
 import {
   INITIAL_STATE,
+  filterProjects,
   findConflict,
+  truncateTail,
   samePath,
   sanitizeProjects,
   sortProjects,
@@ -28,21 +31,8 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-const ACTIVE_COLOR = "#ADD8E6"
-const NAME_COLOR = "#FFFFFF"
-const MAX_NAME_WIDTH = 28
-const MAX_PATH_WIDTH = 60
-const VISIBLE_ROWS = 12
-
-function truncateHead(text: string, max: number): string {
-  const chars = Array.from(text)
-  return chars.length <= max ? text : `${chars.slice(0, max - 1).join("")}…`
-}
-
-function truncateTail(text: string, max: number): string {
-  const chars = Array.from(text)
-  return chars.length <= max ? text : `…${chars.slice(-(max - 1)).join("")}`
-}
+const MAX_PATH_WIDTH = 100
+const VISIBLE_CARDS = 6
 
 function activeDirectory(context: TuiContext): string {
   const route = context.ui.router.current()
@@ -75,20 +65,22 @@ function CdfCommand(props: { context: TuiContext; open: () => Promise<void> }) {
 function CdfDialog(props: {
   context: TuiContext
   projects: readonly ProjectEntry[]
+  currentDirectory: string
+  initialPath?: string
   finish: (choice: MenuChoice) => void
 }) {
+  const initialIndex = Math.max(
+    0,
+    props.initialPath ? props.projects.findIndex((project) => samePath(project.path, props.initialPath ?? "")) : 0,
+  )
   const [query, setQuery] = createSignal("")
-  const [selectedIndex, setSelectedIndex] = createSignal(0)
+  const [selectedIndex, setSelectedIndex] = createSignal(initialIndex)
   const [hoverIndex, setHoverIndex] = createSignal<number>()
-  const [scrollOffset, setScrollOffset] = createSignal(0)
+  const [scrollOffset, setScrollOffset] = createSignal(
+    Math.min(Math.max(0, initialIndex - VISIBLE_CARDS + 1), Math.max(0, props.projects.length - VISIBLE_CARDS)),
+  )
 
-  const filtered = createMemo(() => {
-    const needle = query().trim().toLocaleLowerCase("en-US")
-    if (!needle) return [...props.projects]
-    return props.projects.filter((project) =>
-      `${project.name}\n${project.path}`.toLocaleLowerCase("en-US").includes(needle),
-    )
-  })
+  const filtered = createMemo(() => filterProjects(props.projects, query(), props.context.ui.format.path))
 
   const resetNavigation = () => {
     setSelectedIndex(0)
@@ -106,14 +98,15 @@ function CdfDialog(props: {
     setScrollOffset((offset) => {
       let nextOffset = offset
       if (next < nextOffset) nextOffset = next
-      if (next >= nextOffset + VISIBLE_ROWS) nextOffset = next - VISIBLE_ROWS + 1
-      return Math.min(Math.max(nextOffset, 0), Math.max(0, count - VISIBLE_ROWS))
+      if (next >= nextOffset + VISIBLE_CARDS) nextOffset = next - VISIBLE_CARDS + 1
+      return Math.min(Math.max(nextOffset, 0), Math.max(0, count - VISIBLE_CARDS))
     })
   }
 
   const scrollRows = (delta: number) => {
     const count = filtered().length
-    setScrollOffset((offset) => Math.min(Math.max(offset + delta, 0), Math.max(0, count - VISIBLE_ROWS)))
+    setHoverIndex(undefined)
+    setScrollOffset((offset) => Math.min(Math.max(offset + delta, 0), Math.max(0, count - VISIBLE_CARDS)))
   }
 
   const runForSelection = (kind: "project" | "toggle" | "remove") => {
@@ -179,104 +172,118 @@ function CdfDialog(props: {
     }
   })
 
-  const theme = props.context.theme.contextual.overlay
-
-  const nameColumnWidth = createMemo(() => {
-    let max = 0
-    for (const project of filtered()) {
-      max = Math.max(max, (project.favorite ? `★ ${project.name}` : `  ${project.name}`).length)
-    }
-    return Math.min(MAX_NAME_WIDTH, max)
+  usePaste((event) => {
+    const text = new TextDecoder().decode(event.bytes).replace(/[\x00-\x1F\x7F]+/g, " ").trim()
+    if (!text) return
+    event.preventDefault()
+    setQuery((value) => value + text)
+    resetNavigation()
   })
 
-  const visibleRows = createMemo(() => {
+  const theme = createMemo(() => props.context.theme.surface("dialog"))
+  const accent = () => theme().text.action.primary.base
+
+  const visibleCards = createMemo(() => {
     const offset = scrollOffset()
     return filtered()
-      .slice(offset, offset + VISIBLE_ROWS)
+      .slice(offset, offset + VISIBLE_CARDS)
       .map((project, position) => ({ project, index: offset + position }))
   })
 
-  const isActive = (index: number): boolean => index === selectedIndex() || index === hoverIndex()
+  const cardBackground = (index: number): RGBA | undefined => {
+    if (index === selectedIndex()) return theme().background.raised.high
+    if (index === hoverIndex()) return theme().background.raised.base
+    return undefined
+  }
 
-  const rowLabel = (project: ProjectEntry): string =>
-    truncateHead(project.favorite ? `★ ${project.name}` : `  ${project.name}`, MAX_NAME_WIDTH).padEnd(
-      nameColumnWidth(),
-      " ",
-    )
+  const emptyMessage = (): string =>
+    props.projects.length === 0
+      ? "No saved projects. Press ctrl+a to add one."
+      : `No matches for “${query().trim()}”.`
+
+  const hints: ReadonlyArray<readonly [string, string]> = [
+    ["enter", "open"],
+    ["ctrl+a", "add"],
+    ["ctrl+f", "favorite"],
+    ["ctrl+d", "delete"],
+  ]
 
   return (
-    <box flexDirection="column" gap={1} padding={1}>
-      <text fg={theme.text.default}>Change directory favorite</text>
-      <box flexDirection="row">
-        <text fg={theme.text.subdued}>Filter: </text>
-        <input
-          flexGrow={1}
-          placeholder="Type a project name or path"
-          value={query()}
-          backgroundColor={theme.background.formfield.default}
-          focusedBackgroundColor={theme.background.formfield.focused}
-          textColor={theme.text.formfield.default}
-          focusedTextColor={theme.text.formfield.focused}
-          placeholderColor={theme.text.subdued}
-        />
+    <box flexDirection="column" gap={1} paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1}>
+      <box flexDirection="row" justifyContent="space-between">
+        <text fg={theme().text.base}>Projects</text>
+        <text fg={theme().text.muted}>esc</text>
       </box>
-      <Show
-        when={filtered().length > 0}
-        fallback={<text fg={theme.text.subdued}>No matching projects. Press Ctrl+A to add one.</text>}
-      >
+      <box flexDirection="row" justifyContent="space-between">
+        <box flexDirection="row">
+          <text fg={accent()}>❯ </text>
+          <Show when={query()} fallback={<text fg={theme().text.muted}>▏type to filter…</text>}>
+            <text fg={theme().text.base}>{query()}</text>
+            <text fg={accent()}>▏</text>
+          </Show>
+        </box>
+        <text fg={theme().text.muted}>
+          {filtered().length === props.projects.length
+            ? `${props.projects.length}`
+            : `${filtered().length}/${props.projects.length}`}
+        </text>
+      </box>
+      <Show when={filtered().length > 0} fallback={<text fg={theme().text.muted}>{emptyMessage()}</text>}>
         <box
           flexDirection="column"
-          paddingLeft={2}
-          height={Math.min(VISIBLE_ROWS, filtered().length)}
           onMouseScroll={(event) => {
             if (event.scroll?.direction === "up") scrollRows(-1)
             if (event.scroll?.direction === "down") scrollRows(1)
           }}
         >
-          <For each={visibleRows()}>
-            {(item) => (
-              <box
-                flexDirection="row"
-                gap={2}
-                onMouseOver={() => setHoverIndex(item.index)}
-                onMouseOut={() => setHoverIndex((current) => (current === item.index ? undefined : current))}
-                onMouseDown={(event) => {
-                  event.preventDefault()
-                  props.finish({ kind: "project", project: item.project })
-                }}
-              >
-                <text fg={isActive(item.index) ? ACTIVE_COLOR : NAME_COLOR}>{rowLabel(item.project)}</text>
-                <text fg={theme.text.subdued}>
-                  {truncateTail(props.context.ui.format.path(item.project.path), MAX_PATH_WIDTH)}
-                </text>
-              </box>
-            )}
+          <For each={visibleCards()}>
+            {(item) => {
+              const selected = () => item.index === selectedIndex()
+              const current = () => samePath(item.project.path, props.currentDirectory)
+              return (
+                <box
+                  flexDirection="row"
+                  backgroundColor={cardBackground(item.index)}
+                  onMouseOver={() => setHoverIndex(item.index)}
+                  onMouseOut={() => setHoverIndex((hovered) => (hovered === item.index ? undefined : hovered))}
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    props.finish({ kind: "project", project: item.project })
+                  }}
+                >
+                  <box flexDirection="column" width={2}>
+                    <text fg={accent()}>{selected() ? "▌" : " "}</text>
+                    <text fg={accent()}>{selected() ? "▌" : " "}</text>
+                  </box>
+                  <box flexDirection="column" flexGrow={1}>
+                    <box flexDirection="row" justifyContent="space-between">
+                      <box flexDirection="row">
+                        <text fg={theme().text.feedback.warning.base}>{item.project.favorite ? "★ " : "  "}</text>
+                        <text fg={selected() ? accent() : theme().text.base}>{item.project.name}</text>
+                      </box>
+                      <Show when={current()}>
+                        <text fg={theme().text.muted}>current </text>
+                      </Show>
+                    </box>
+                    <text fg={theme().text.muted}>
+                      {"  " + truncateTail(props.context.ui.format.path(item.project.path), MAX_PATH_WIDTH)}
+                    </text>
+                  </box>
+                </box>
+              )
+            }}
           </For>
         </box>
       </Show>
-      <box flexDirection="row" gap={2} paddingLeft={2}>
-        <box flexDirection="row" gap={1}>
-          <text fg={theme.text.default}>add</text>
-          <text fg={theme.text.subdued}>ctrl+a</text>
-        </box>
-        <box flexDirection="row" gap={1}>
-          <text fg={theme.text.default}>favorite</text>
-          <text fg={theme.text.subdued}>ctrl+f</text>
-        </box>
-        <box flexDirection="row" gap={1}>
-          <text fg={theme.text.default}>delete</text>
-          <text fg={theme.text.subdued}>ctrl+d</text>
-        </box>
-      </box>
-      <box flexDirection="row" gap={2} paddingLeft={2}>
-        <box flexDirection="row" gap={1}>
-          <text fg={theme.text.default}>open</text>
-          <text fg={theme.text.subdued}>enter</text>
-        </box>
-        <box flexDirection="row" gap={1}>
-          <text fg={theme.text.default}>close</text>
-          <text fg={theme.text.subdued}>esc</text>
-        </box>
+      <box flexDirection="row" gap={2}>
+        <For each={hints}>
+          {([key, label]) => (
+            <box flexDirection="row" gap={1}>
+              <text fg={accent()}>{key}</text>
+              <text fg={theme().text.muted}>{label}</text>
+            </box>
+          )}
+        </For>
       </box>
     </box>
   )
@@ -298,7 +305,7 @@ export default Plugin.define({
       context.ui.toast.show({ title: "CDF", message, variant: "error" })
     }
 
-    const addProject = async (): Promise<void> => {
+    const addProject = async (): Promise<string | undefined> => {
       const currentDirectory = activeDirectory(context)
       const enteredPath = await context.ui.dialog.prompt({
         title: "Add project",
@@ -361,6 +368,7 @@ export default Plugin.define({
         draft.projects = [...sanitizeProjects(draft.projects), { name, path: projectPath, favorite }]
       })
       context.ui.toast.show({ title: "CDF", message: `Saved “${name}”.`, variant: "success" })
+      return projectPath
     }
 
     const toggleFavorite = async (selected: ProjectEntry): Promise<void> => {
@@ -378,13 +386,13 @@ export default Plugin.define({
       })
     }
 
-    const removeProject = async (selected: ProjectEntry): Promise<void> => {
+    const removeProject = async (selected: ProjectEntry): Promise<boolean> => {
       const confirmed = await context.ui.dialog.confirm({
         title: `Remove “${selected.name}”?`,
         message: context.ui.format.path(selected.path),
         label: { confirm: "Remove", cancel: "Cancel" },
       })
-      if (!confirmed) return
+      if (!confirmed) return false
 
       await updateState((draft) => {
         draft.version = 1
@@ -393,6 +401,7 @@ export default Plugin.define({
         )
       })
       context.ui.toast.show({ title: "CDF", message: `Removed “${selected.name}”.`, variant: "success" })
+      return true
     }
 
     const openProject = async (project: ProjectEntry): Promise<void> => {
@@ -432,7 +441,7 @@ export default Plugin.define({
       }
     }
 
-    const showMenu = (): Promise<MenuChoice> =>
+    const showMenu = (initialPath?: string): Promise<MenuChoice> =>
       new Promise((resolve) => {
         let settled = false
         const finish = (choice: MenuChoice) => {
@@ -444,23 +453,40 @@ export default Plugin.define({
 
         context.ui.dialog.set({ size: "xlarge", centered: true })
         context.ui.dialog.show(
-          () => <CdfDialog context={context} projects={projects()} finish={finish} />,
+          () => (
+            <CdfDialog
+              context={context}
+              projects={projects()}
+              currentDirectory={activeDirectory(context)}
+              initialPath={initialPath}
+              finish={finish}
+            />
+          ),
           () => finish({ kind: "cancel" }),
         )
       })
 
     const openMenu = async (): Promise<void> => {
+      let focusPath: string | undefined
       while (true) {
-        const selected = await showMenu()
+        const selected = await showMenu(focusPath)
 
         if (selected.kind === "project") {
           await openProject(selected.project)
           return
         }
         if (selected.kind === "cancel") return
-        if (selected.kind === "add") await addProject()
-        if (selected.kind === "toggle") await toggleFavorite(selected.project)
-        if (selected.kind === "remove") await removeProject(selected.project)
+        if (selected.kind === "add") focusPath = (await addProject()) ?? focusPath
+        if (selected.kind === "toggle") {
+          await toggleFavorite(selected.project)
+          focusPath = selected.project.path
+        }
+        if (selected.kind === "remove") {
+          const list = projects()
+          const index = list.findIndex((project) => samePath(project.path, selected.project.path))
+          const neighbor = list[index + 1] ?? list[index - 1]
+          focusPath = (await removeProject(selected.project)) ? neighbor?.path : selected.project.path
+        }
       }
     }
 

@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { findConflict, pathIdentity, samePath, sanitizeProjects, sortProjects } from "../src/favorites.ts"
+import {
+  filterProjects,
+  findConflict,
+  pathIdentity,
+  samePath,
+  sanitizeProjects,
+  sortProjects,
+  truncateTail,
+} from "../src/favorites.ts"
 
 describe("sanitizeProjects", () => {
   test("keeps valid records and removes malformed and duplicate paths", () => {
@@ -53,5 +61,33 @@ describe("findConflict", () => {
 
   test("detects duplicate names", () => {
     expect(findConflict(projects, { name: "storefront", path: "C:\\Code\\Other" })).toBe("name")
+  })
+})
+
+describe("filterProjects", () => {
+  const projects = [
+    { name: "Storefront", path: "/home/me/code/shop", favorite: true },
+    { name: "Dotfiles", path: "/home/me/dotfiles", favorite: false },
+  ]
+  const display = (value: string) => value.replace("/home/me", "~")
+
+  test("matches name or path case-insensitively", () => {
+    expect(filterProjects(projects, "STORE").map((project) => project.name)).toEqual(["Storefront"])
+    expect(filterProjects(projects, "code/shop").map((project) => project.name)).toEqual(["Storefront"])
+  })
+
+  test("matches the shortened path shown in the list", () => {
+    expect(filterProjects(projects, "~/dot", display).map((project) => project.name)).toEqual(["Dotfiles"])
+  })
+
+  test("returns everything for a blank query", () => {
+    expect(filterProjects(projects, "  ")).toHaveLength(2)
+  })
+})
+
+describe("truncateTail", () => {
+  test("keeps the end of long text", () => {
+    expect(truncateTail("abcdef", 4)).toBe("…def")
+    expect(truncateTail("abc", 4)).toBe("abc")
   })
 })

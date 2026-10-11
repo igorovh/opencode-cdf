@@ -67,6 +67,26 @@ export function sortProjects(projects: readonly ProjectEntry[]): ProjectEntry[] 
   })
 }
 
+// displayPath lets "~/…" queries match the shortened path shown in the list.
+export function filterProjects(
+  projects: readonly ProjectEntry[],
+  query: string,
+  displayPath: (value: string) => string = (value) => value,
+): ProjectEntry[] {
+  const needle = query.trim().toLocaleLowerCase("en-US")
+  if (!needle) return [...projects]
+  return projects.filter((project) =>
+    [project.name, project.path, displayPath(project.path)].some((field) =>
+      field.toLocaleLowerCase("en-US").includes(needle),
+    ),
+  )
+}
+
+export function truncateTail(text: string, max: number): string {
+  const chars = Array.from(text)
+  return chars.length <= max ? text : `…${chars.slice(-(max - 1)).join("")}`
+}
+
 export function findConflict(
   projects: readonly ProjectEntry[],
   candidate: Pick<ProjectEntry, "name" | "path">,
