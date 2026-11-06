@@ -522,7 +522,7 @@ var tui_default = Plugin.define({
         title: "Add project",
         description: `Relative paths are resolved from ${context.ui.format.path(currentDirectory)}`,
         placeholder: "Path to project",
-        value: currentDirectory
+        value: context.ui.format.path(currentDirectory)
       });
       if (enteredPath === undefined)
         return;
