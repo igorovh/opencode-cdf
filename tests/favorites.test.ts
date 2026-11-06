@@ -57,14 +57,15 @@ describe("path comparison", () => {
 })
 
 describe("findConflict", () => {
-  const projects = [{ name: "Storefront", path: "C:\\Code\\Storefront", favorite: true }]
+  const root = path.parse(process.cwd()).root
+  const projects = [{ name: "Storefront", path: path.join(root, "Code", "Storefront"), favorite: true }]
 
   test("detects duplicate paths", () => {
-    expect(findConflict(projects, { name: "Other", path: "c:\\code\\storefront" })).toBe("path")
+    expect(findConflict(projects, { name: "Other", path: path.join(root, "Code", "Storefront") + path.sep })).toBe("path")
   })
 
   test("detects duplicate names", () => {
-    expect(findConflict(projects, { name: "storefront", path: "C:\\Code\\Other" })).toBe("name")
+    expect(findConflict(projects, { name: "storefront", path: path.join(root, "Code", "Other") })).toBe("name")
   })
 })
 

@@ -21,9 +21,8 @@ describe("expandHome", () => {
 
 describe("resolveCandidatePath", () => {
   test("resolves relative paths from the active directory", () => {
-    expect(resolveCandidatePath("../other", path.join("C:", "Code", "Current"))).toBe(
-      path.normalize(path.join("C:", "Code", "other")),
-    )
+    const root = path.parse(process.cwd()).root
+    expect(resolveCandidatePath("../other", path.join(root, "Code", "Current"))).toBe(path.join(root, "Code", "other"))
   })
 
   test("rejects empty input", () => {
