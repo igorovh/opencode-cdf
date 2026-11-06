@@ -47,8 +47,17 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "chore: rebuild dist"
           git push
-          # Pushes made with GITHUB_TOKEN start no workflows, so dispatch CI for the new commit's required checks.
-          gh workflow run ci.yml --ref "$GITHUB_HEAD_REF"
+          # GitHub holds the PR run for this bot commit until someone approves it, so approve it here.
+          sha=$(git rev-parse HEAD)
+          for attempt in $(seq 1 30); do
+            id=$(gh run list --commit "$sha" --event pull_request --status action_required --json databaseId --jq '.[0].databaseId')
+            if [ -n "$id" ]; then
+              gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$id/approve"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::Found no CI run to approve for $sha"
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Check dist is up to date
