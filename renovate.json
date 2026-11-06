@@ -1,0 +1,20 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "description": "Peer ranges are the minimum supported OpenCode, raised by hand",
+      "matchDepTypes": ["peerDependencies"],
+      "enabled": false
+    },
+    {
+      "matchDepTypes": ["devDependencies"],
+      "rangeStrategy": "pin"
+    },
+    {
+      "description": "Keep the dev copies of the host runtime in step",
+      "groupName": "OpenCode host runtime",
+      "matchPackageNames": ["@opencode/plugin", "@opentui/core", "@opentui/solid", "solid-js"]
+    }
+  ]
+}
