@@ -19,7 +19,7 @@ $env:XDG_STATE_HOME = Join-Path $root "state"
 # The cache only holds the downloaded plugin, so it survives between recordings.
 $env:XDG_CACHE_HOME = Join-Path $root "cache"
 
-& $opencode plugin add github:igorovh/opencode-cdf#v0.2.0 | Out-Null
+& $opencode plugin add github:igorovh/opencode-cdf#v0.2.1 | Out-Null
 
 $projects = @(
   @{ name = "acme-api"; path = "demo/acme-api"; favorite = $true },

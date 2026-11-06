@@ -32,7 +32,7 @@ Install the plugin from GitHub with the OpenCode CLI. Pin a release tag: OpenCod
 can tell when a newer one is out.
 
 ```sh
-opencode plugin add github:igorovh/opencode-cdf#v0.2.0
+opencode plugin add github:igorovh/opencode-cdf#v0.2.1
 ```
 
 This adds the plugin to the `plugins` array in `~/.config/opencode/cli.json`. Restart the TUI, then run `/cdf`.
@@ -42,7 +42,7 @@ You can also add the entry to the config yourself:
 ```jsonc
 {
   "$schema": "https://opencode.ai/v2/cli.json",
-  "plugins": ["github:igorovh/opencode-cdf#v0.2.0"]
+  "plugins": ["github:igorovh/opencode-cdf#v0.2.1"]
 }
 ```
 
@@ -90,7 +90,7 @@ and options on an `opencode.jsonc` entry do not reach the TUI.
 
 ```jsonc
 {
-  "plugins": [{ "package": "github:igorovh/opencode-cdf#v0.2.0", "options": {} }]
+  "plugins": [{ "package": "github:igorovh/opencode-cdf#v0.2.1", "options": {} }]
 }
 ```
 

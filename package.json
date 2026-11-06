@@ -1,6 +1,6 @@
 {
   "name": "opencode-cdf",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OpenCode TUI plugin: a /cdf picker for favorite project directories that moves the session or opens a new one",
   "keywords": [
     "opencode",
