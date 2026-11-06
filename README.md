@@ -6,8 +6,11 @@ pick a project, and the current session moves there. From the Home screen it ope
 > Supports OpenCode V2 2.2.5 or newer. V1 is not supported.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="The /cdf project picker with favorites, a filter prompt and two-line project cards" width="540">
+  <img src="docs/demo.gif" alt="Opening /cdf, moving with the arrow keys, starring a project, adding one, then filtering and opening it" width="1000">
 </p>
+
+The demo shows, in order: opening `/cdf`, moving with the arrow keys, starring a project with `ctrl+f`, adding a
+project with `ctrl+a`, and filtering by typing, then opening the match in a new session.
 
 ## Features
 
@@ -127,8 +130,10 @@ OpenCode loads `dist/tui.js`, so run `bun run compile` after every change.
 }
 ```
 
-`docs/demo.tape` records a demo GIF with [VHS](https://github.com/charmbracelet/vhs) on throwaway OpenCode
-directories: `vhs docs/demo.tape`.
+`docs/demo.tape` records the demo GIF with [VHS](https://github.com/charmbracelet/vhs) on Windows PowerShell:
+`vhs docs/demo.tape`. `docs/demo-setup.ps1` gives OpenCode a fake home, config and project list, and the TUI runs
+with `--standalone`, so the recording shows no personal data and does not touch the background service. Set
+`OPENCODE_BIN` if `opencode` on your `PATH` is not OpenCode V2.
 
 ## License
 
