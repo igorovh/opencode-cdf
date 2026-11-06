@@ -1,50 +1,45 @@
 # opencode-cdf
 
-An OpenCode TUI plugin for saving project directories and switching between them with `/cdf`.
+A plugin for the [OpenCode](https://opencode.ai) TUI (v2) that keeps a list of your project directories. Run `/cdf`,
+pick a project, and the current session moves there. From the Home screen it opens a new session instead.
 
-> Supports OpenCode V2 only (built against `@opencode/plugin` 2.0.26). V1 is not supported.
+> Supports OpenCode V2 2.2.5 or newer. V1 is not supported.
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="The /cdf project picker" width="540">
+  <img src="docs/screenshot.png" alt="The /cdf project picker with favorites, a filter prompt and two-line project cards" width="540">
 </p>
 
 ## Features
 
-- Project picker with a type-to-filter prompt, a match counter, and two-line cards (name and path).
-- Favorites listed first with a `★`; the project of the current session is marked `current`.
-- Filtering by name, full path, or the shortened `~/…` path.
-- Add, remove, and toggle-favorite actions without leaving the picker.
-- Mouse support: hover, click to open, and wheel scrolling.
-- Colors come from the active OpenCode theme, so light and dark themes both work.
-- Moves the current session with the V2 `session.move` API, or opens a new session from the Home screen.
+- **Project picker** with a type-to-filter prompt, a match counter, and two-line cards (name and path).
+- **Favorites** are listed first with a `★`. The project of the current session is marked `current`.
+- **Filtering** by name, full path, or the shortened `~/…` path.
+- **Add, remove, and toggle favorites** without leaving the picker.
+- **Mouse support:** hover, click to open, and wheel scrolling.
+- **Theme colors** come from the active OpenCode theme, so light and dark themes both work.
+- **Shared list:** every open OpenCode window sees the same projects.
 
 ## Requirements
 
-- OpenCode V2 2.0.26 or newer.
+- OpenCode V2 2.2.5 or newer.
 
 ## Install
 
-Install the plugin from GitHub with the OpenCode CLI:
+Install the plugin from GitHub with the OpenCode CLI. Pin a release tag: OpenCode then caches that exact version and
+can tell when a newer one is out.
 
 ```sh
-opencode plugin add github:igorovh/opencode-cdf
+opencode plugin add github:igorovh/opencode-cdf#v0.2.0
 ```
 
-To pin a release, add its tag:
-
-```sh
-opencode plugin add github:igorovh/opencode-cdf#v0.1.0
-```
-
-This adds the plugin to the global `plugins` array in `~/.config/opencode/opencode.jsonc`. Restart the TUI, then run
-`/cdf`.
+This adds the plugin to the `plugins` array in `~/.config/opencode/cli.json`. Restart the TUI, then run `/cdf`.
 
 You can also add the entry to the config yourself:
 
 ```jsonc
 {
-  "$schema": "https://opencode.ai/config.json",
-  "plugins": ["github:igorovh/opencode-cdf"]
+  "$schema": "https://opencode.ai/v2/cli.json",
+  "plugins": ["github:igorovh/opencode-cdf#v0.2.0"]
 }
 ```
 
@@ -55,29 +50,59 @@ opencode plugin update github:igorovh/opencode-cdf
 opencode plugin remove github:igorovh/opencode-cdf
 ```
 
-## Usage
+## Keys and commands
 
-Run `/cdf` or choose **Change directory favorite** from the command palette (`Ctrl+P`).
+Run `/cdf` or choose **Change directory favorite** from the command palette.
 
-| Key           | Action                                                         |
-| ------------- | -------------------------------------------------------------- |
-| typing, paste | Filter projects                                                |
-| `↑` / `↓`     | Move the selection                                             |
-| `Enter`       | Open the selected project                                      |
-| `Ctrl+A`      | Add a project by entering its path, display name, and favorite |
-| `Ctrl+F`      | Toggle the favorite star on the selected project               |
-| `Ctrl+D`      | Remove the selected project after confirmation                 |
-| `Esc`         | Close the picker                                               |
+| Key | Command ID | Action |
+|---|---|---|
+| typing, paste | | Filter projects |
+| `↑` / `↓`, `ctrl+p` / `ctrl+n` | | Move the selection |
+| `enter` | | Open the selected project |
+| `ctrl+a` | `cdf.add` | Add a project: path, display name, and favorite |
+| `ctrl+f` | `cdf.favorite` | Toggle the favorite star on the selected project |
+| `ctrl+d` | `cdf.remove` | Remove the selected project after confirmation |
+| `esc` | | Close the picker |
 
-The selection stays on the same project after adding, toggling, or removing one. The shortcuts are active only while
-the picker is open.
+The shortcuts work only while the picker is open. The selection stays on the same project after you add, toggle, or
+remove one.
 
-Selecting a project while viewing a session moves that session to the selected directory. Selecting a project from
-Home creates a new session in that directory. The plugin never calls `process.chdir` and never sends a prompt to the
-model.
+Relative paths in the add flow are resolved from the active session directory, and `~` is your home directory. A path
+must exist and be a directory before it can be saved or opened.
 
-Relative paths entered during the add flow are resolved from the active session directory. `~` is expanded to the
-current user's home directory. A path must exist and must be a directory before it can be saved or opened.
+## Options
+
+The plugin has no options of its own. To change a shortcut, set its command ID under `keybinds` in
+`~/.config/opencode/cli.json`; the hints at the bottom of the picker follow your setting:
+
+```jsonc
+{
+  "keybinds": { "cdf.add": "ctrl+o", "cdf.favorite": "ctrl+s" }
+}
+```
+
+TUI plugins only get `options` from `cli.json`. If a later version adds options, put them on a `cli.json` entry whose
+`package` is exactly the same string as the one you installed. `opencode plugin add` does not write options for you,
+and options on an `opencode.jsonc` entry do not reach the TUI.
+
+```jsonc
+{
+  "plugins": [{ "package": "github:igorovh/opencode-cdf#v0.2.0", "options": {} }]
+}
+```
+
+## How it works
+
+- Opening a project in a session calls the V2 `session.move` API. On the Home screen it creates a new session in that
+  directory. The plugin never calls `process.chdir` and never sends a prompt to the model.
+- The list is stored with OpenCode's plugin storage in
+  `~/.local/state/opencode/<channel>/tui/plugin.cdf.projects.json`. Writes are atomic, and other open TUIs pick up
+  changes.
+- Saved paths are resolved to real paths, so a symlink and its target count as one project. Paths are compared
+  without case on Windows and macOS.
+- The repo ships a compiled `dist/tui.js`. OpenCode compiles Solid JSX only for files outside `node_modules`, and a
+  `github:` install lives inside it
+  ([anomalyco/opencode#39986](https://github.com/anomalyco/opencode/issues/39986)).
 
 ## Development
 
@@ -89,15 +114,21 @@ cd opencode-cdf
 bun install
 bun test
 bun run typecheck
+bun run compile      # rebuild dist/tui.js; commit it with your change
+bun run check:dist   # dist/ may only import modules OpenCode provides
 ```
 
-To run your checkout instead of the published plugin, put its path in `plugins` and restart the TUI:
+To run your checkout instead of the published plugin, put its path in `cli.json` `plugins` and restart the TUI.
+OpenCode loads `dist/tui.js`, so run `bun run compile` after every change.
 
 ```jsonc
 {
   "plugins": ["/path/to/opencode-cdf"]
 }
 ```
+
+`docs/demo.tape` records a demo GIF with [VHS](https://github.com/charmbracelet/vhs) on throwaway OpenCode
+directories: `vhs docs/demo.tape`.
 
 ## License
 
