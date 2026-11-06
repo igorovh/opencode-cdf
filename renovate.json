@@ -1,6 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  "gitIgnoredAuthors": ["41898299+github-actions[bot]@users.noreply.github.com"],
   "packageRules": [
     {
       "description": "Peer ranges are the minimum supported OpenCode, raised by hand",
