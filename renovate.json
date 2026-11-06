@@ -1,8 +1,22 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  "dependencyDashboard": true,
+  "platformAutomerge": true,
+  "automergeType": "pr",
+  "rebaseWhen": "behind-base-branch",
   "gitIgnoredAuthors": ["41898299+github-actions[bot]@users.noreply.github.com"],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["before 6am on monday"]
+  },
   "packageRules": [
+    {
+      "description": "The ruleset requires green CI, so a failing update stays open instead of merging",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest", "major"],
+      "automerge": true
+    },
     {
       "description": "Peer ranges are the minimum supported OpenCode, raised by hand",
       "matchDepTypes": ["peerDependencies"],
@@ -15,7 +29,7 @@
     {
       "description": "Keep the dev copies of the host runtime in step",
       "groupName": "OpenCode host runtime",
-      "matchPackageNames": ["@opencode/plugin", "@opentui/core", "@opentui/solid", "solid-js"]
+      "matchPackageNames": ["@opencode/*", "@opentui/*", "solid-js"]
     }
   ]
 }
