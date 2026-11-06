@@ -314,7 +314,8 @@ export default Plugin.define({
         title: "Add project",
         description: `Relative paths are resolved from ${context.ui.format.path(currentDirectory)}`,
         placeholder: "Path to project",
-        value: currentDirectory,
+        // Show "~/…" like the rest of the UI; expandHome turns it back into the full path.
+        value: context.ui.format.path(currentDirectory),
       })
       if (enteredPath === undefined) return
 
