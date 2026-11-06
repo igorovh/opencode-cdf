@@ -47,7 +47,11 @@ describe("path comparison", () => {
     expect(pathIdentity("C:\\Code\\App\\", "win32")).toBe(pathIdentity("c:\\code\\app", "win32"))
   })
 
-  test("remains case-sensitive outside Windows", () => {
+  test("is case-insensitive on macOS", () => {
+    expect(samePath("/Users/me/Code", "/users/me/code/", "darwin")).toBe(true)
+  })
+
+  test("remains case-sensitive on Linux", () => {
     expect(samePath("/Code/App", "/code/app", "linux")).toBe(false)
   })
 })
