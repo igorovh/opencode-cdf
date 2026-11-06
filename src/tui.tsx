@@ -3,7 +3,7 @@
 import path from "node:path"
 import { Plugin } from "@opencode/plugin/tui"
 import type { RGBA } from "@opentui/core"
-import { useKeyboard, usePaste } from "@opentui/solid"
+import { useKeyboard, usePaste, useTerminalDimensions } from "@opentui/solid"
 import { For, Show, createMemo, createSignal } from "solid-js"
 import {
   INITIAL_STATE,
@@ -16,7 +16,7 @@ import {
   type FavoritesState,
   type ProjectEntry,
 } from "./favorites.ts"
-import { validateProjectPath } from "./paths.ts"
+import { canonicalPath, validateProjectPath } from "./paths.ts"
 
 type TuiContext = Plugin.Context
 
@@ -31,8 +31,17 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-const MAX_PATH_WIDTH = 100
 const VISIBLE_CARDS = 6
+// Width of the host's "xlarge" dialog.
+const DIALOG_WIDTH = 116
+// Dialog padding plus the selection bar and the indent before the path.
+const PATH_CHROME_WIDTH = 10
+
+const ACTIONS = [
+  { id: "cdf.add", kind: "add", title: "Add project", hint: "add", bind: "ctrl+a" },
+  { id: "cdf.favorite", kind: "toggle", title: "Toggle favorite", hint: "favorite", bind: "ctrl+f" },
+  { id: "cdf.remove", kind: "remove", title: "Remove project", hint: "delete", bind: "ctrl+d" },
+] as const
 
 function activeDirectory(context: TuiContext): string {
   const route = context.ui.router.current()
@@ -118,40 +127,32 @@ function CdfDialog(props: {
     props.finish({ kind, project })
   }
 
+  // The host's dialog.select.prev/next own up/down in modal mode, so this layer has to outrank them.
+  props.context.keymap.layer(() => ({
+    mode: "modal",
+    priority: 100,
+    commands: [
+      { title: "Previous project", group: "CDF", bind: "up,ctrl+p", run: () => moveSelection(-1) },
+      { title: "Next project", group: "CDF", bind: "down,ctrl+n", run: () => moveSelection(1) },
+      ...ACTIONS.map((action) => ({
+        id: action.id,
+        title: action.title,
+        group: "CDF",
+        bind: action.bind,
+        run: () => (action.kind === "add" ? props.finish({ kind: "add" }) : runForSelection(action.kind)),
+      })),
+    ],
+  }))
+
   useKeyboard((key) => {
     const consume = () => {
       key.preventDefault()
       key.stopPropagation()
     }
 
-    if (key.ctrl && key.name === "a") {
-      consume()
-      props.finish({ kind: "add" })
-      return
-    }
-    if (key.ctrl && key.name === "f") {
-      consume()
-      runForSelection("toggle")
-      return
-    }
-    if (key.ctrl && key.name === "d") {
-      consume()
-      runForSelection("remove")
-      return
-    }
     if (key.name === "escape") {
       consume()
       props.finish({ kind: "cancel" })
-      return
-    }
-    if (key.name === "up") {
-      consume()
-      moveSelection(-1)
-      return
-    }
-    if (key.name === "down") {
-      consume()
-      moveSelection(1)
       return
     }
     if (key.name === "return" || key.name === "enter") {
@@ -198,14 +199,16 @@ function CdfDialog(props: {
 
   const emptyMessage = (): string =>
     props.projects.length === 0
-      ? "No saved projects. Press ctrl+a to add one."
+      ? `No saved projects. Press ${shortcut(ACTIONS[0])} to add one.`
       : `No matches for “${query().trim()}”.`
 
-  const hints: ReadonlyArray<readonly [string, string]> = [
+  const dimensions = useTerminalDimensions()
+  const pathWidth = () => Math.max(10, Math.min(DIALOG_WIDTH, dimensions().width - 2) - PATH_CHROME_WIDTH)
+
+  const shortcut = (action: (typeof ACTIONS)[number]) => props.context.keymap.shortcuts(action.id)[0] ?? action.bind
+  const hints = (): ReadonlyArray<readonly [string, string]> => [
     ["enter", "open"],
-    ["ctrl+a", "add"],
-    ["ctrl+f", "favorite"],
-    ["ctrl+d", "delete"],
+    ...ACTIONS.map((action) => [shortcut(action), action.hint] as const),
   ]
 
   return (
@@ -266,7 +269,7 @@ function CdfDialog(props: {
                       </Show>
                     </box>
                     <text fg={theme().text.muted}>
-                      {"  " + truncateTail(props.context.ui.format.path(item.project.path), MAX_PATH_WIDTH)}
+                      {"  " + truncateTail(props.context.ui.format.path(item.project.path), pathWidth())}
                     </text>
                   </box>
                 </box>
@@ -276,7 +279,7 @@ function CdfDialog(props: {
         </box>
       </Show>
       <box flexDirection="row" gap={2}>
-        <For each={hints}>
+        <For each={hints()}>
           {([key, label]) => (
             <box flexDirection="row" gap={1}>
               <text fg={accent()}>{key}</text>
@@ -363,25 +366,41 @@ export default Plugin.define({
       })
       if (favorite === undefined) return
 
+      // Re-check inside the update: another TUI may have saved the same project meanwhile.
+      let lateConflict: "name" | "path" | undefined
       await updateState((draft) => {
+        const stored = sanitizeProjects(draft.projects)
+        lateConflict = findConflict(stored, { name, path: projectPath })
+        if (lateConflict) return
         draft.version = 1
-        draft.projects = [...sanitizeProjects(draft.projects), { name, path: projectPath, favorite }]
+        draft.projects = [...stored, { name, path: projectPath, favorite }]
       })
+      if (lateConflict) {
+        toastError(lateConflict === "name" ? `A project named “${name}” already exists.` : "This project path is already saved.")
+        return
+      }
       context.ui.toast.show({ title: "CDF", message: `Saved “${name}”.`, variant: "success" })
       return projectPath
     }
 
     const toggleFavorite = async (selected: ProjectEntry): Promise<void> => {
+      let favorite: boolean | undefined
       await updateState((draft) => {
         const stored = sanitizeProjects(draft.projects)
         const project = stored.find((candidate) => samePath(candidate.path, selected.path))
-        if (project) project.favorite = !project.favorite
+        if (!project) return
+        project.favorite = !project.favorite
+        favorite = project.favorite
         draft.version = 1
         draft.projects = stored
       })
+      if (favorite === undefined) {
+        toastError(`“${selected.name}” is no longer saved.`)
+        return
+      }
       context.ui.toast.show({
         title: "CDF",
-        message: selected.favorite ? `Removed “${selected.name}” from favorites.` : `Added “${selected.name}” to favorites.`,
+        message: favorite ? `Added “${selected.name}” to favorites.` : `Removed “${selected.name}” from favorites.`,
         variant: "success",
       })
     }
@@ -394,12 +413,18 @@ export default Plugin.define({
       })
       if (!confirmed) return false
 
+      let removed = false
       await updateState((draft) => {
+        const stored = sanitizeProjects(draft.projects)
+        const kept = stored.filter((project) => !samePath(project.path, selected.path))
+        removed = kept.length < stored.length
         draft.version = 1
-        draft.projects = sanitizeProjects(draft.projects).filter(
-          (project) => !samePath(project.path, selected.path),
-        )
+        draft.projects = kept
       })
+      if (!removed) {
+        toastError(`“${selected.name}” is no longer saved.`)
+        return false
+      }
       context.ui.toast.show({ title: "CDF", message: `Removed “${selected.name}”.`, variant: "success" })
       return true
     }
@@ -417,7 +442,7 @@ export default Plugin.define({
       try {
         if (route.type === "session") {
           const current = context.data.session.get(route.sessionID)
-          if (current && samePath(current.location.directory, projectPath)) {
+          if (current && samePath(await canonicalPath(current.location.directory), projectPath)) {
             context.ui.toast.show({ title: "CDF", message: `Already in “${project.name}”.`, variant: "info" })
             return
           }
@@ -441,7 +466,7 @@ export default Plugin.define({
       }
     }
 
-    const showMenu = (initialPath?: string): Promise<MenuChoice> =>
+    const showMenu = (currentDirectory: string, initialPath?: string): Promise<MenuChoice> =>
       new Promise((resolve) => {
         let settled = false
         const finish = (choice: MenuChoice) => {
@@ -457,7 +482,7 @@ export default Plugin.define({
             <CdfDialog
               context={context}
               projects={projects()}
-              currentDirectory={activeDirectory(context)}
+              currentDirectory={currentDirectory}
               initialPath={initialPath}
               finish={finish}
             />
@@ -467,9 +492,19 @@ export default Plugin.define({
       })
 
     const openMenu = async (): Promise<void> => {
+      try {
+        await runMenu()
+      } catch (error) {
+        context.ui.dialog.clear()
+        toastError(errorMessage(error))
+      }
+    }
+
+    const runMenu = async (): Promise<void> => {
       let focusPath: string | undefined
       while (true) {
-        const selected = await showMenu(focusPath)
+        // Saved paths are real paths, so resolve symlinks before marking the current project.
+        const selected = await showMenu(await canonicalPath(activeDirectory(context)), focusPath)
 
         if (selected.kind === "project") {
           await openProject(selected.project)

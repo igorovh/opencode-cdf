@@ -24,7 +24,10 @@ export function pathIdentity(value: string, platform: NodeJS.Platform = process.
   const normalized = path.normalize(value)
   const root = path.parse(normalized).root
   const withoutTrailingSeparators = normalized === root ? normalized : normalized.replace(/[\\/]+$/, "")
-  return platform === "win32" ? withoutTrailingSeparators.toLocaleLowerCase("en-US") : withoutTrailingSeparators
+  // Default file systems on Windows and macOS ignore case.
+  return platform === "win32" || platform === "darwin"
+    ? withoutTrailingSeparators.toLocaleLowerCase("en-US")
+    : withoutTrailingSeparators
 }
 
 export function samePath(left: string, right: string, platform: NodeJS.Platform = process.platform): boolean {
