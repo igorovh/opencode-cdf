@@ -24,7 +24,7 @@
     "url": "https://github.com/igorovh/opencode-cdf/issues"
   },
   "type": "module",
-  "packageManager": "bun@1.4.4",
+  "packageManager": "bun@1.4.5",
   "private": true,
   "files": [
     "dist",
